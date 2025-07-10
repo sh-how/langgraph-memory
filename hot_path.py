@@ -15,6 +15,25 @@ from pathlib import Path
 from datetime import datetime
 load_dotenv()
 
+"""
+LangGraph Multi-Agent Memory Architecture
+
+This implementation provides separate memory namespaces for each agent to prevent knowledge mixing:
+
+Memory Namespaces:
+- math_memories: Dedicated to math_expert agent for calculations and mathematical knowledge
+- research_memories: Dedicated to research_expert agent for research findings and company data
+- writing_memories: Dedicated to writing_expert agent for content creation and writing tasks
+- supervisor_memories: Dedicated to supervisor for coordination and routing decisions
+
+Benefits:
+1. Prevents confusion between agent domains
+2. Allows specialized knowledge storage
+3. Enables better agent autonomy
+4. Supervisor can view all agent memories for informed routing decisions
+5. External persistence maintains separation across sessions
+"""
+
 # Initialize LLM and embeddings
 llm = create_local_llm()
 embeddings = create_local_embeddings()
@@ -34,34 +53,60 @@ class MemoryPersistence:
         self.backup_dir.mkdir(exist_ok=True)
         
     def save_memories(self, store):
-        """Save current memories from store to external file."""
+        """Save current memories from all namespaces to external file."""
         try:
-            memories = store.search(("memories",))
+            # Define all memory namespaces
+            namespaces = [
+                ("math_memories",),
+                ("research_memories",),
+                ("writing_memories",),
+                ("supervisor_memories",)
+            ]
             
-            # Convert memories to serializable format
-            serialized_memories = []
-            for memory in memories:
-                memory_data = {
-                    "key": getattr(memory, 'key', None),
-                    "value": getattr(memory, 'value', {}),
-                    "namespace": getattr(memory, 'namespace', []),
-                    "created_at": getattr(memory, 'created_at', None),
-                    "updated_at": getattr(memory, 'updated_at', None),
-                    "saved_timestamp": datetime.now().isoformat()
-                }
-                serialized_memories.append(memory_data)
+            all_memories = []
+            
+            # Collect memories from all namespaces
+            for namespace in namespaces:
+                try:
+                    memories = store.search(namespace)
+                    namespace_name = namespace[0]
+                    print(f"Found {len(memories)} memories in {namespace_name}")
+                    
+                    for memory in memories:
+                        memory_data = {
+                            "key": getattr(memory, 'key', None),
+                            "value": getattr(memory, 'value', {}),
+                            "namespace": namespace,
+                            "namespace_name": namespace_name,
+                            "created_at": getattr(memory, 'created_at', None),
+                            "updated_at": getattr(memory, 'updated_at', None),
+                            "saved_timestamp": datetime.now().isoformat()
+                        }
+                        all_memories.append(memory_data)
+                except Exception as ns_error:
+                    print(f"⚠ Error accessing {namespace}: {ns_error}")
             
             # Save to JSON file
             with open(self.memories_file, 'w') as f:
-                json.dump(serialized_memories, f, indent=2, default=str)
+                json.dump(all_memories, f, indent=2, default=str)
             
             # Create backup
             backup_file = self.backup_dir / f"memories_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             with open(backup_file, 'w') as f:
-                json.dump(serialized_memories, f, indent=2, default=str)
+                json.dump(all_memories, f, indent=2, default=str)
             
-            print(f"✓ Saved {len(serialized_memories)} memories to {self.memories_file}")
+            print(f"✓ Saved {len(all_memories)} total memories to {self.memories_file}")
             print(f"✓ Backup created: {backup_file}")
+            
+            # Show breakdown by namespace
+            namespace_counts = {}
+            for memory in all_memories:
+                ns_name = memory.get('namespace_name', 'unknown')
+                namespace_counts[ns_name] = namespace_counts.get(ns_name, 0) + 1
+            
+            print("Memory breakdown by agent:")
+            for ns_name, count in namespace_counts.items():
+                print(f"  - {ns_name}: {count} memories")
             
         except Exception as e:
             print(f"⚠ Failed to save memories: {e}")
@@ -129,44 +174,61 @@ class MemoryPersistence:
 # Initialize memory persistence
 memory_persistence = MemoryPersistence()
 
-def create_memory_prompt(state, agent_role: str = "assistant"):
-    """Create a memory-aware prompt for agents."""
+def create_memory_prompt(state, agent_role: str = "assistant", memory_namespace: tuple = ("memories",)):
+    """Create a memory-aware prompt for agents with dedicated memory namespace."""
     store = get_store()
     memories = store.search(
-        ("memories",),
+        memory_namespace,
         query=state["messages"][-1].content,
     )
     system_msg = f"""You are a helpful {agent_role}.
 
-## Memories
+## Your Personal Memories
 <memories>
 {memories}
 </memories>
 
 Always use your memory tool to save important information that might be useful for future conversations.
+Your memories are private and separate from other agents.
 """
     return [{"role": "system", "content": system_msg}, *state["messages"]]
 
 def create_supervisor_prompt(state):
     """Create a memory-aware prompt for the supervisor."""
     store = get_store()
-    memories = store.search(
-        ("memories",),  # Use same namespace as agents
-        query=state["messages"][-1].content,
-    )
+    
+    # Search across all agent memory namespaces to get overview
+    math_memories = store.search(("math_memories",), query=state["messages"][-1].content)
+    research_memories = store.search(("research_memories",), query=state["messages"][-1].content)
+    writing_memories = store.search(("writing_memories",), query=state["messages"][-1].content)
+    supervisor_memories = store.search(("supervisor_memories",), query=state["messages"][-1].content)
+    
     system_msg = f"""You are a team supervisor managing specialized agents with memory capabilities.
 
-## Shared Team Memories
-<memories>
-{memories}
-</memories>
+## Your Supervisor Memories
+<supervisor_memories>
+{supervisor_memories}
+</supervisor_memories>
+
+## Agent Memory Overview (Read-only)
+<math_agent_memories>
+{math_memories}
+</math_agent_memories>
+
+<research_agent_memories>
+{research_memories}
+</research_agent_memories>
+
+<writing_agent_memories>
+{writing_memories}
+</writing_agent_memories>
 
 You coordinate between:
 - math_expert: For mathematical calculations and problem-solving
 - research_expert: For web research and information gathering
 - writing_expert: For content creation and writing tasks
 
-Choose the most appropriate agent based on the user's request. You have access to all memories created by your team agents.
+Choose the most appropriate agent based on the user's request. You can see what each agent remembers to make better routing decisions.
 """
     return [{"role": "system", "content": system_msg}, *state["messages"]]
 
@@ -234,23 +296,35 @@ def grammar_check(text: str) -> str:
     """Check grammar of the given text."""
     return f"Grammar check complete for: {text[:50]}... (Text appears to be well-structured)"
 
-# Create memory-enabled specialized agents
+# Create memory-enabled specialized agents with dedicated namespaces
 def create_math_prompt(state):
-    return create_memory_prompt(state, "math expert specializing in calculations and problem-solving")
+    return create_memory_prompt(
+        state, 
+        "math expert specializing in calculations and problem-solving",
+        memory_namespace=("math_memories",)
+    )
 
 def create_research_prompt(state):
-    return create_memory_prompt(state, "research expert specializing in information gathering and analysis")
+    return create_memory_prompt(
+        state, 
+        "research expert specializing in information gathering and analysis",
+        memory_namespace=("research_memories",)
+    )
 
 def create_writing_prompt(state):
-    return create_memory_prompt(state, "writing expert specializing in content creation and editing")
+    return create_memory_prompt(
+        state, 
+        "writing expert specializing in content creation and editing",
+        memory_namespace=("writing_memories",)
+    )
 
-# Create specialized agents with memory
+# Create specialized agents with dedicated memory namespaces
 math_agent = create_react_agent(
     llm,
     prompt=create_math_prompt,
     tools=[
         add, multiply, divide,
-        create_manage_memory_tool(namespace=("memories",))
+        create_manage_memory_tool(namespace=("math_memories",))
     ],
     name="math_expert",
     store=store,
@@ -262,7 +336,7 @@ research_agent = create_react_agent(
     prompt=create_research_prompt,
     tools=[
         web_search, company_info,
-        create_manage_memory_tool(namespace=("memories",))
+        create_manage_memory_tool(namespace=("research_memories",))
     ],
     name="research_expert",
     store=store,
@@ -274,20 +348,20 @@ writing_agent = create_react_agent(
     prompt=create_writing_prompt,
     tools=[
         create_outline, grammar_check,
-        create_manage_memory_tool(namespace=("memories",))
+        create_manage_memory_tool(namespace=("writing_memories",))
     ],
     name="writing_expert",
     store=store,
     checkpointer=checkpointer,
 )
 
-# Create supervisor workflow with memory
+# Create supervisor workflow with its own memory namespace
 supervisor_workflow = create_supervisor(
     [math_agent, research_agent, writing_agent],
     model=llm,
     prompt=create_supervisor_prompt,
-    # Add memory tool to supervisor
-    tools=[create_manage_memory_tool(namespace=("memories",))],
+    # Add memory tool to supervisor with its own namespace
+    tools=[create_manage_memory_tool(namespace=("supervisor_memories",))],
 )
 
 # Compile the supervisor with memory capabilities
@@ -366,52 +440,56 @@ def run_supervisor_demo():
     if memories:
         memory_persistence.export_to_database(memories, "sqlite")
     
-    # Show stored memories
-    print("\n8. Checking Stored Memories:")
+    # Show stored memories from all namespaces
+    print("\n8. Checking Stored Memories by Agent:")
     try:
-        memories = store.search(("memories",))
-        if memories:
-            print("Found memories in store:")
-            for i, memory in enumerate(memories, 1):
-                try:
-                    # Extract content from memory based on LangGraph memory structure
-                    # The create_manage_memory_tool typically stores memories as strings
-                    # or with a specific structure
+        namespaces = [
+            ("math_memories", "Math Agent"),
+            ("research_memories", "Research Agent"),
+            ("writing_memories", "Writing Agent"),
+            ("supervisor_memories", "Supervisor")
+        ]
+        
+        total_memories = 0
+        for namespace_tuple, agent_name in namespaces:
+            try:
+                memories = store.search((namespace_tuple,))
+                if memories:
+                    print(f"\n{agent_name} Memories ({len(memories)} found):")
+                    for i, memory in enumerate(memories, 1):
+                        try:
+                            # Extract content from memory based on LangGraph memory structure
+                            value = getattr(memory, 'value', '')
+                            
+                            # Handle different memory value formats
+                            if isinstance(value, str):
+                                content = value
+                            elif isinstance(value, dict):
+                                content = (value.get('content') or 
+                                         value.get('text') or 
+                                         value.get('message') or 
+                                         str(value))
+                            else:
+                                content = str(value)
+                            
+                            # Truncate long content for display
+                            if len(content) > 100:
+                                content = content[:100] + "..."
+                            
+                            print(f"  {i}. {content}")
+                            
+                        except Exception as mem_error:
+                            print(f"  {i}. Error processing memory: {mem_error}")
                     
-                    # Get the raw value
-                    value = getattr(memory, 'value', '')
+                    total_memories += len(memories)
+                else:
+                    print(f"\n{agent_name} Memories: No memories found")
                     
-                    # Handle different memory value formats
-                    if isinstance(value, str):
-                        # If it's a string, use it directly
-                        content = value
-                    elif isinstance(value, dict):
-                        # If it's a dict, try common keys
-                        content = (value.get('content') or 
-                                 value.get('text') or 
-                                 value.get('message') or 
-                                 str(value))
-                    else:
-                        # For any other type, convert to string
-                        content = str(value)
-                    
-                    # Truncate long content for display
-                    if len(content) > 100:
-                        content = content[:100] + "..."
-                    
-                    print(f"  {i}. {content}")
-                    
-                except Exception as mem_error:
-                    print(f"  {i}. Error processing memory: {mem_error}")
-                    # Show raw memory attributes for debugging
-                    print(f"      Memory attributes: {dir(memory)}")
-                    try:
-                        print(f"      Memory key: {getattr(memory, 'key', 'N/A')}")
-                        print(f"      Memory value type: {type(getattr(memory, 'value', None))}")
-                    except:
-                        pass
-        else:
-            print("No memories found in store.")
+            except Exception as ns_error:
+                print(f"\n{agent_name} Memories: Error accessing namespace - {ns_error}")
+        
+        if total_memories == 0:
+            print("\nNo memories found in any agent namespace.")
             
         # Also show external storage
         external_memories = memory_persistence.load_memories()

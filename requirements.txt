@@ -1,8 +1,28 @@
+# Core LangGraph and LangChain dependencies
 langgraph>=0.2.0
-langgraph-supervisor>=0.1.0
-langmem>=0.1.0
+langgraph-supervisor>=0.0.27
+langmem==0.0.28
 langchain-core>=0.3.0
 langchain-openai>=0.2.0
 langchain-ollama>=0.2.0
+
+# Environment and configuration
 python-dotenv>=1.0.0
-pydantic>=2.0.0 
+pydantic>=2.0.0
+
+# Standard library dependencies (included with Python)
+# - typing (built-in)
+# - os (built-in)
+# - json (built-in)
+# - pickle (built-in)
+# - pathlib (built-in)
+# - datetime (built-in)
+# - sqlite3 (built-in)
+
+# Optional but recommended for better performance
+numpy>=1.24.0
+requests>=2.31.0
+
+# For embeddings and vector operations (if needed)
+# sentence-transformers>=2.2.0  # Uncomment if using sentence transformers
+# faiss-cpu>=1.7.4  # Uncomment if using FAISS for vector storage 
