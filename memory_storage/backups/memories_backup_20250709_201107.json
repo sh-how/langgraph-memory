@@ -1,0 +1,86 @@
+[
+  {
+    "key": "004ce765-b400-42bd-a7e2-4cb239da457b",
+    "value": {
+      "content": "Calculation: 15 * 23 + 47"
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:09:27.287877+00:00",
+    "updated_at": "2025-07-09 12:09:27.287877+00:00",
+    "saved_timestamp": "2025-07-09T20:11:07.387190"
+  },
+  {
+    "key": "60b5bee9-92b7-4127-8bcb-bfd112dd728a",
+    "value": {
+      "content": "Calculation: 15 * 23 + 47"
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:09:33.186071+00:00",
+    "updated_at": "2025-07-09 12:09:33.186071+00:00",
+    "saved_timestamp": "2025-07-09T20:11:07.387190"
+  },
+  {
+    "key": "76b168eb-4d39-4d27-83e6-ea05a73d1a9a",
+    "value": {
+      "content": "Calculation: 15 * 23 + 47 = 392"
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:09:38.313690+00:00",
+    "updated_at": "2025-07-09 12:09:38.313690+00:00",
+    "saved_timestamp": "2025-07-09T20:11:07.387190"
+  },
+  {
+    "key": "df243e4a-ecfa-46a4-b8fe-888d9a4b8a9e",
+    "value": {
+      "content": "Meta employee count as of 2023 is over 87,000."
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:09:50.708318+00:00",
+    "updated_at": "2025-07-09 12:09:50.708318+00:00",
+    "saved_timestamp": "2025-07-09T20:11:07.387190"
+  },
+  {
+    "key": "98790a71-eecb-4f72-bdf8-1b50a8f65c22",
+    "value": {
+      "content": "Meta employee count as of 2023 is over 87,000."
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:09:57.558213+00:00",
+    "updated_at": "2025-07-09 12:09:57.558213+00:00",
+    "saved_timestamp": "2025-07-09T20:11:07.387190"
+  },
+  {
+    "key": "02976dc7-bdb1-4797-a20b-8fb4edaed87a",
+    "value": {
+      "content": "Presentation topic: AI in Business"
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:10:11.958253+00:00",
+    "updated_at": "2025-07-09 12:10:11.958253+00:00",
+    "saved_timestamp": "2025-07-09T20:11:07.387190"
+  },
+  {
+    "key": "b9fbb5b3-aeb6-4850-927c-2f02a88f868d",
+    "value": {
+      "content": "Presentation topic: AI in Business"
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:10:27.064674+00:00",
+    "updated_at": "2025-07-09 12:10:27.064674+00:00",
+    "saved_timestamp": "2025-07-09T20:11:07.387190"
+  }
+]

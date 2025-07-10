@@ -1,0 +1,50 @@
+[
+  {
+    "key": "78e652dd-32f8-42fd-bb2f-63da3cca4e8f",
+    "value": {
+      "content": "Calculation: 15 * 23 + 47"
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:12:52.659302+00:00",
+    "updated_at": "2025-07-09 12:12:52.659302+00:00",
+    "saved_timestamp": "2025-07-09T20:14:08.075054"
+  },
+  {
+    "key": "b8a7d108-e3d6-4f4a-a72c-6dafebc6928b",
+    "value": {
+      "content": "Calculation: 15 * 23 + 47"
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:13:04.413176+00:00",
+    "updated_at": "2025-07-09 12:13:04.413176+00:00",
+    "saved_timestamp": "2025-07-09T20:14:08.075054"
+  },
+  {
+    "key": "dba3f0cb-d7b2-4c8b-aec8-08676cf46925",
+    "value": {
+      "content": "As of 2023, Meta has approximately over 87,000 employees."
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:13:20.995571+00:00",
+    "updated_at": "2025-07-09 12:13:20.995571+00:00",
+    "saved_timestamp": "2025-07-09T20:14:08.075054"
+  },
+  {
+    "key": "4fa55885-ae18-43c1-9495-71620a9f6f17",
+    "value": {
+      "content": "Presentation topic: AI in Business"
+    },
+    "namespace": [
+      "memories"
+    ],
+    "created_at": "2025-07-09 12:13:43.719909+00:00",
+    "updated_at": "2025-07-09 12:13:43.719909+00:00",
+    "saved_timestamp": "2025-07-09T20:14:08.075054"
+  }
+]
