@@ -193,44 +193,6 @@ Your memories are private and separate from other agents.
 """
     return [{"role": "system", "content": system_msg}, *state["messages"]]
 
-def create_supervisor_prompt(state):
-    """Create a memory-aware prompt for the supervisor."""
-    store = get_store()
-    
-    # Search across all agent memory namespaces to get overview
-    math_memories = store.search(("math_memories",), query=state["messages"][-1].content)
-    research_memories = store.search(("research_memories",), query=state["messages"][-1].content)
-    writing_memories = store.search(("writing_memories",), query=state["messages"][-1].content)
-    supervisor_memories = store.search(("supervisor_memories",), query=state["messages"][-1].content)
-    
-    system_msg = f"""You are a team supervisor managing specialized agents with memory capabilities.
-
-## Your Supervisor Memories
-<supervisor_memories>
-{supervisor_memories}
-</supervisor_memories>
-
-## Agent Memory Overview (Read-only)
-<math_agent_memories>
-{math_memories}
-</math_agent_memories>
-
-<research_agent_memories>
-{research_memories}
-</research_agent_memories>
-
-<writing_agent_memories>
-{writing_memories}
-</writing_agent_memories>
-
-You coordinate between:
-- math_expert: For mathematical calculations and problem-solving
-- research_expert: For web research and information gathering
-- writing_expert: For content creation and writing tasks
-
-Choose the most appropriate agent based on the user's request. You can see what each agent remembers to make better routing decisions.
-"""
-    return [{"role": "system", "content": system_msg}, *state["messages"]]
 
 # ============================================================================
 # STORAGE CONFIGURATION
@@ -318,6 +280,13 @@ def create_writing_prompt(state):
         memory_namespace=("writing_memories",)
     )
 
+def create_supervisor_prompt(state):
+    return create_memory_prompt(
+        state, 
+        "supervisor specializing in coordination and routing decisions",
+        memory_namespace=("supervisor_memories",)
+    )
+
 # Create specialized agents with dedicated memory namespaces
 math_agent = create_react_agent(
     llm,
@@ -385,7 +354,7 @@ def run_supervisor_demo():
     print("1. Testing Math Agent through Supervisor:")
     response = supervisor_app.invoke({
         "messages": [
-            {"role": "user", "content": "What is 15 * 23 + 47? Please remember this calculation."}
+            {"role": "user", "content": "What is 15 * 23 + 47?"}
         ]
     }, config=config)
     print(f"Response: {response['messages'][-1].content}\n")
@@ -394,7 +363,7 @@ def run_supervisor_demo():
     print("2. Testing Research Agent through Supervisor:")
     response = supervisor_app.invoke({
         "messages": [
-            {"role": "user", "content": "Can you research information about Meta's employee count? Remember this info."}
+            {"role": "user", "content": "Can you research information about Meta's employee count?"}
         ]
     }, config=config)
     print(f"Response: {response['messages'][-1].content}\n")
@@ -403,7 +372,7 @@ def run_supervisor_demo():
     print("3. Testing Writing Agent through Supervisor:")
     response = supervisor_app.invoke({
         "messages": [
-            {"role": "user", "content": "Create an outline for a presentation about AI in business. Remember my presentation topic."}
+            {"role": "user", "content": "Create an outline for a presentation about AI in business."}
         ]
     }, config=config)
     print(f"Response: {response['messages'][-1].content}\n")
@@ -499,7 +468,7 @@ def run_supervisor_demo():
             
             # Show some external memory examples
             print("External memory examples:")
-            for i, ext_mem in enumerate(external_memories[:3], 1):  # Show first 3
+            for i, ext_mem in enumerate(external_memories, 1):  # Show all memories
                 try:
                     value = ext_mem.get('value', {})
                     if isinstance(value, str):
