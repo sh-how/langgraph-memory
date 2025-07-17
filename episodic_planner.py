@@ -2,19 +2,22 @@
 Episodic Planner Agent with Episodic Memory
 
 This script demonstrates a planning agent that stores each planning event (plan proposal, approval, feedback, etc.) as an episode in episodic memory.
-Uses your local LLM and embedding setup.
+Uses Redis for persistence and local LLM for processing.
 
 Features:
 - Each planning event is stored as an episode (timestamp + content)
 - Planner can recall/search past planning episodes
+- Redis-based persistence for long-term memory
+- User-specific namespaces for planning episodes
 - Automated and interactive demo modes
 """
 
+import uuid
 from datetime import datetime
-from langgraph.store.memory import InMemoryStore
+from langgraph.store.redis import RedisStore
 from langgraph.prebuilt import create_react_agent
 from langmem import create_manage_memory_tool, create_search_memory_tool
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.redis import RedisSaver
 from config.llm import create_local_embeddings, create_local_llm
 
 # Helper to format a planning episode
@@ -27,40 +30,55 @@ def make_planning_episode(plan_content: str, approved: bool, feedback: str = "")
         "outcome": "approved" if approved else "rejected"
     }
 
-def setup_planner_with_episodic_memory():
+def setup_episodic_planner():
+    """Set up the episodic planner system with local LLM and Redis storage."""
+    
+    # Initialize embeddings and LLM using your configuration
     embeddings = create_local_embeddings()
     llm = create_local_llm()
-    store = InMemoryStore(
-        index={
-            "dims": 1536,
-            "embed": embeddings,
-        }
-    )
-    checkpointer = MemorySaver()
+    
+    # Redis configuration
+    REDIS_URI = "redis://localhost:6379"
+    
+    
+    # Create Redis checkpointer for conversation state  
+    with RedisSaver.from_conn_string(REDIS_URI) as checkpointer:
+        checkpointer.setup()
+
+        # Create Redis store with embeddings
+        with RedisStore.from_conn_string(REDIS_URI) as store:
+            store.setup()
+    
+    # Create episodic planner agent
     planner_agent = create_react_agent(
         llm,
         prompt="""You are a Planning Agent with episodic memory for plan generation and approval tracking.
 
 Your episodic memory stores:
 - Plans you generate
-- Whether each plan was approved or rejected
+- Whether each plan was approved or rejected  
 - Feedback received on rejected plans
+- Timestamps of all planning events
 
 This memory acts as few-shot examples to help you create better plans. When generating new plans:
-1. Search your memory for similar past plans
+1. Search your memory for similar planning scenarios
 2. Learn from approved plans (what worked)
 3. Learn from rejected plans (what to avoid)
-4. Use this knowledge to create better plans
+4. Use this knowledge to create better, more detailed plans
 
-Use the memory tools to:
-- Store new plans and their outcomes in a structured format
-- Search for relevant past plans when creating new ones
-- Recall patterns from successful vs failed plans
+When asked to store a plan outcome:
+1. Use manage_memory to store the planning episode
+2. Include timestamp, plan content, approval status, and feedback
+3. Respond with "Plan outcome stored successfully."
 
-When storing plan outcomes, use this format:
-"Plan: [plan content] | Approved: [true/false] | Feedback: [feedback if any]"
+When asked to create a plan:
+1. First search your memory for relevant past planning episodes
+2. Learn from the patterns in approved vs rejected plans
+3. Provide a detailed, step-by-step plan based on your learning
 
-Focus on learning from your planning history to improve future plan quality.""",
+When asked about your planning history:
+1. Search your memory for relevant episodes
+2. Summarize patterns and learnings from past plans""",
         tools=[
             create_manage_memory_tool(namespace=("planner_episodes",)),
             create_search_memory_tool(namespace=("planner_episodes",)),
@@ -68,13 +86,19 @@ Focus on learning from your planning history to improve future plan quality.""",
         store=store,
         checkpointer=checkpointer,
     )
+    
     return planner_agent, store
 
 def run_planner_episodic_demo():
+    """Run a demonstration of episodic planner capabilities."""
+    
     print("=== Episodic Planner Agent Demo ===")
     print("Stores plans and their approval status for few-shot learning")
+    print("Using local LLM and Redis storage")
     print("-" * 50)
-    agent, store = setup_planner_with_episodic_memory()
+    
+    # Set up the planner system
+    planner_agent, store = setup_episodic_planner()
     config = {"configurable": {"thread_id": "planner-episodic-demo"}}
 
     # Demo: Store some example plans with outcomes
@@ -99,12 +123,14 @@ def run_planner_episodic_demo():
         if feedback:
             print(f"Feedback: {feedback}")
         
-        episode = make_planning_episode(plan, approved, feedback)
-        response = agent.invoke({
+        # Format as planning episode
+        episode_data = make_planning_episode(plan, approved, feedback)
+        
+        response = planner_agent.invoke({
             "messages": [
-                {"role": "user", "content": f"Store this plan outcome in your memory: Plan: {plan} | Approved: {approved} | Feedback: {feedback}"}
+                {"role": "user", "content": f"Store this plan outcome in your memory: {episode_data}"}
             ]
-        }, config=config)
+        }, config=config) # type: ignore
         print(f"AI: {response['messages'][-1].content}")
 
     # Test few-shot learning by asking for a new plan
@@ -114,108 +140,69 @@ def run_planner_episodic_demo():
     
     test_queries = [
         "Create a plan for building a web application with user authentication",
-        "What patterns do you notice in your approved vs rejected plans?",
-        "Based on your memory, what makes a good plan?",
+        "Search your memory for patterns in approved vs rejected plans", 
+        "Based on your planning episodes, what makes a good plan?",
         "Show me examples of plans that were rejected and why"
     ]
     
     for q in test_queries:
         print(f"\nUser: {q}")
-        response = agent.invoke({
+        response = planner_agent.invoke({
             "messages": [
                 {"role": "user", "content": q}
             ]
-        }, config=config)
+        }, config=config) # type: ignore
         print(f"AI: {response['messages'][-1].content}")
 
-    # Show all stored planning episodes
-    print("\n" + "="*50)
-    print("ALL STORED PLAN OUTCOMES")
-    print("="*50)
-    memories = store.search(("planner_episodes",))
-    if memories:
-        for i, memory in enumerate(memories, 1):
-            value = getattr(memory, 'value', {})
-            if isinstance(value, dict):
-                content = value.get('content', str(value))
-            else:
-                content = str(value)
-            
-            # Parse the stored content to extract plan, approval, and feedback
-            if '|' in content:
-                parts = content.split('|')
-                plan_part = parts[0].replace('Plan:', '').strip()
-                approved_part = parts[1].replace('Approved:', '').strip()
-                feedback_part = parts[2].replace('Feedback:', '').strip() if len(parts) > 2 else ""
-                
-                status = "APPROVED" if approved_part.lower() == 'true' else "REJECTED"
-                print(f"\n{i}. {status}")
-                print(f"   Plan: {plan_part[:100]}{'...' if len(plan_part) > 100 else ''}")
-                if feedback_part and feedback_part.lower() != 'none':
-                    print(f"   Feedback: {feedback_part}")
-            else:
-                # Fallback for other formats
-                if len(content) > 100:
-                    content = content[:100] + "..."
-                print(f"  {i}. {content}")
-    else:
-        print("No planning episodes found.")
     print("\n=== Demo Complete ===")
 
 def run_interactive_planner_episodic():
-    print("=== Interactive Episodic Planner Agent Demo ===")
+    """Run an interactive episodic planner session."""
+    
+    print("=== Interactive Episodic Planner Agent ===")
     print("Store plans and their approval status for few-shot learning")
-    print("Commands: 'quit' to exit, 'episodes' to see stored plans, 'create' to generate a plan")
+    print("Using local LLM and Redis storage")
+    print("Commands: 'quit' to exit, 'memory' to search episodes, 'create' to generate a plan")
     print("-" * 60)
-    agent, store = setup_planner_with_episodic_memory()
-    config = {"configurable": {"thread_id": "planner-episodic-interactive"}}
+    
+    # Set up the planner system
+    planner_agent, store = setup_episodic_planner()
+    
+    user_id = input("Enter your user ID (or press Enter for 'interactive_user'): ").strip()
+    if not user_id:
+        user_id = "interactive_user"
+    
+    config = {"configurable": {"thread_id": f"planner-episodic-{user_id}"}}
+    
     while True:
         try:
-            user_input = input("\nCommand (create/query/quit/episodes): ").strip()
+            user_input = input("\nCommand (create/memory/query/quit): ").strip()
             if user_input.lower() in ['quit', 'exit', 'q']:
                 print("Goodbye!")
                 break
-            if user_input.lower() == 'episodes':
-                memories = store.search(("planner_episodes",))
-                if memories:
-                    print(f"\nStored Plan Outcomes ({len(memories)} found):")
-                    for i, memory in enumerate(memories, 1):
-                        value = getattr(memory, 'value', {})
-                        if isinstance(value, dict):
-                            content = value.get('content', str(value))
-                        else:
-                            content = str(value)
-                        
-                        # Parse the stored content to extract plan, approval, and feedback
-                        if '|' in content:
-                            parts = content.split('|')
-                            plan_part = parts[0].replace('Plan:', '').strip()
-                            approved_part = parts[1].replace('Approved:', '').strip()
-                            feedback_part = parts[2].replace('Feedback:', '').strip() if len(parts) > 2 else ""
-                            
-                            status = "APPROVED" if approved_part.lower() == 'true' else "REJECTED"
-                            print(f"\n{i}. {status}")
-                            print(f"   Plan: {plan_part[:100]}{'...' if len(plan_part) > 100 else ''}")
-                            if feedback_part and feedback_part.lower() != 'none':
-                                print(f"   Feedback: {feedback_part}")
-                        else:
-                            # Fallback for other formats
-                            if len(content) > 100:
-                                content = content[:100] + "..."
-                            print(f"  {i}. {content}")
-                else:
-                    print("\nNo planning episodes stored yet.")
+                
+            if user_input.lower() == 'memory':
+                # Search planning episodes
+                query = input("Search your planning episodes for: ").strip()
+                if query:
+                    response = planner_agent.invoke({
+                        "messages": [
+                            {"role": "user", "content": f"Search your memory for planning episodes related to: {query}"}
+                        ]
+                    }, config=config) # type: ignore
+                    print(f"AI: {response['messages'][-1].content}")
                 continue
+                
             if user_input.lower() == 'create':
                 # Generate a new plan
                 task = input("Describe the task you need a plan for: ").strip()
                 if task:
                     print(f"\nGenerating plan for: {task}")
-                    response = agent.invoke({
+                    response = planner_agent.invoke({
                         "messages": [
-                            {"role": "user", "content": f"Create a plan for: {task}. Use your memory of past plans to make this a good plan."}
+                            {"role": "user", "content": f"Create a detailed plan for: {task}. First search your memory for similar plans and learn from them."}
                         ]
-                    }, config=config)
+                    }, config=config) # type: ignore
                     print(f"AI: {response['messages'][-1].content}")
                     
                     # Ask for approval status
@@ -226,27 +213,31 @@ def run_interactive_planner_episodic():
                     
                     # Store the plan outcome
                     plan_content = response['messages'][-1].content
-                    store_response = agent.invoke({
+                    episode_data = make_planning_episode(plan_content, approved == 'y', feedback)
+                    
+                    store_response = planner_agent.invoke({
                         "messages": [
-                            {"role": "user", "content": f"Store this plan outcome in your memory: Plan: {plan_content} | Approved: {approved == 'y'} | Feedback: {feedback}"}
+                            {"role": "user", "content": f"Store this plan outcome in your memory: {episode_data}"}
                         ]
-                    }, config=config)
+                    }, config=config) # type: ignore
                     print(f"Plan outcome stored: {store_response['messages'][-1].content}")
                 continue
+                
             if user_input.lower() == 'query':
                 # Query the agent about planning
                 query = input("Ask about planning (e.g., 'What makes a good plan?'): ").strip()
                 if query:
-                    response = agent.invoke({
+                    response = planner_agent.invoke({
                         "messages": [
                             {"role": "user", "content": query}
                         ]
-                    }, config=config)
+                    }, config=config) # type: ignore
                     print(f"AI: {response['messages'][-1].content}")
                 continue
+                
             if not user_input:
                 continue
-            print("Unknown command. Use: create, query, episodes, or quit")
+            print("Unknown command. Use: create, memory, query, or quit")
         except KeyboardInterrupt:
             print("\n\nGoodbye!")
             break
