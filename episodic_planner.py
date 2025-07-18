@@ -16,8 +16,8 @@ import uuid
 from datetime import datetime
 from langgraph.store.redis import RedisStore
 from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import InMemorySaver
 from langmem import create_manage_memory_tool, create_search_memory_tool
-from langgraph.checkpoint.redis import RedisSaver
 from config.llm import create_local_embeddings, create_local_llm
 
 # Helper to format a planning episode
@@ -41,13 +41,16 @@ def setup_episodic_planner():
     REDIS_URI = "redis://localhost:6379"
     
     
-    # Create Redis checkpointer for conversation state  
-    with RedisSaver.from_conn_string(REDIS_URI) as checkpointer:
-        checkpointer.setup()
+    checkpointer = InMemorySaver()
 
-        # Create Redis store with embeddings
-        with RedisStore.from_conn_string(REDIS_URI) as store:
-            store.setup()
+    # Create Redis store with embeddings using context manager
+    store_context = RedisStore.from_conn_string(REDIS_URI)
+    store = store_context.__enter__()
+    store.setup()
+    store.index = {
+        "dims": 1536,
+        "embed": embeddings,
+    }
     
     # Create episodic planner agent
     planner_agent = create_react_agent(
